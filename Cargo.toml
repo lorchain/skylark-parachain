@@ -2,12 +2,11 @@
 members = [
     "node",
     "runtime",
-    "modules/primitives",
-    "modules/inspect",
-    "modules/opus",
-    "modules/interaction",
-    "modules/curated-group",
-    "modules/tcx"
+    "pallets/primitives",
+    "pallets/creation",
+    "pallets/interaction",
+    "pallets/curated-group",
+    "pallets/tcx"
 ]
 
 [profile.release]

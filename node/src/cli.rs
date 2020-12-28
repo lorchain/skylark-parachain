@@ -1,30 +1,37 @@
-use sc_cli::RunCmd;
 use structopt::StructOpt;
+use sc_cli::RunCmd;
 
-/// An overarching CLI command definition.
 #[derive(Debug, StructOpt)]
 pub struct Cli {
-	/// Possible subcommand with parameters.
 	#[structopt(subcommand)]
 	pub subcommand: Option<Subcommand>,
-	#[allow(missing_docs)]
+
 	#[structopt(flatten)]
 	pub run: RunCmd,
 }
 
-/// Possible subcommands of the main binary.
 #[derive(Debug, StructOpt)]
 pub enum Subcommand {
-	/// A set of base subcommands handled by `sc_cli`.
-	#[structopt(flatten)]
-	Base(sc_cli::Subcommand),
+	/// Build a chain specification.
+	BuildSpec(sc_cli::BuildSpecCmd),
 
-	/// The custom inspect subcommmand for decoding blocks and extrinsics.
-	#[structopt(
-	name = "inspect",
-	about = "Decode given block or extrinsic using current native runtime."
-	)]
-	Inspect(inspect::cli::InspectCmd),
+	/// Validate blocks.
+	CheckBlock(sc_cli::CheckBlockCmd),
+
+	/// Export blocks.
+	ExportBlocks(sc_cli::ExportBlocksCmd),
+
+	/// Export the state of a given block into a chain spec.
+	ExportState(sc_cli::ExportStateCmd),
+
+	/// Import blocks.
+	ImportBlocks(sc_cli::ImportBlocksCmd),
+
+	/// Remove the whole chain.
+	PurgeChain(sc_cli::PurgeChainCmd),
+
+	/// Revert the chain to a previous state.
+	Revert(sc_cli::RevertCmd),
 
 	/// The custom benchmark subcommmand benchmarking runtime pallets.
 	#[structopt(name = "benchmark", about = "Benchmark runtime pallets.")]

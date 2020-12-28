@@ -17,10 +17,10 @@ use pallet_timestamp as timestamp;
 use codec::{Encode, Decode};
 use sp_std::{cmp, result, convert::{TryInto}};
 use curated_group;
-use opus;
+use creation;
 
 /// The module's configuration trait.
-pub trait Trait: system::Trait + timestamp::Trait + curated_group::Trait + opus::Trait {
+pub trait Trait: system::Trait + timestamp::Trait + curated_group::Trait + creation::Trait {
 	type TcxId:  Parameter + Member + Default + Bounded + AtLeast32Bit + Copy;
 	type TcxType: Parameter + Member + Default + Copy;
 	type ActionId: Parameter + Member + Default + Copy;
@@ -50,10 +50,10 @@ pub struct Tcx<CuratedGroupId, TcxType, ContentHash> {
 
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "std", derive(Debug))]
-pub struct Listing<ListingId, OpusId, Balance, Moment,
+pub struct Listing<ListingId, CreationId, Balance, Moment,
 	ChallengeId, AccountId> {
 	id: ListingId,
-	opus_id: OpusId,
+	creation_id: CreationId,
 	amount: Balance,
 	quota: Balance,
 	application_expiry: Moment,
@@ -106,9 +106,9 @@ decl_storage! {
 	NextOwnedTcxId get(fn next_owned_tcx_id): map hasher(blake2_128_concat) T::CuratedGroupId => T::TcxId;
 
     // actual tcx
-    TcxListings get(fn tcx_listings): map hasher(blake2_128_concat) (T::TcxId, T::OpusId) => Listing<T::ListingId, T::OpusId, BalanceOf<T>, T::Moment, T::ChallengeId, T::AccountId>;
+    TcxListings get(fn tcx_listings): map hasher(blake2_128_concat) (T::TcxId, T::CreationId) => Listing<T::ListingId, T::CreationId, BalanceOf<T>, T::Moment, T::ChallengeId, T::AccountId>;
 	NextTcxListingId get(fn next_tcx_listing_id): map hasher(blake2_128_concat) T::TcxId => T::ListingId;
-    TcxListingIndexOpus get(fn tcx_listing_index_opus): map hasher(blake2_128_concat) (T::TcxId, T::ListingId) => T::OpusId;
+    TcxListingIndexOpus get(fn tcx_listing_index_creation): map hasher(blake2_128_concat) (T::TcxId, T::ListingId) => T::CreationId;
 
     Challenges get(fn challenges): map hasher(blake2_128_concat) T::ChallengeId => Challenge<BalanceOf<T>, T::Moment, T::AccountId, T::TcxId>;
     Votes get(fn votes): map hasher(blake2_128_concat) (T::ChallengeId, T::AccountId) => Vote<BalanceOf<T>>;
@@ -152,13 +152,13 @@ decl_module! {
     }
 
     #[weight = 100_000]
-    pub fn propose(origin, tcx_id: T::TcxId, opus_id: <T as opus::Trait>::OpusId, amount: BalanceOf<T>,
+    pub fn propose(origin, tcx_id: T::TcxId, creation_id: <T as creation::Trait>::CreationId, amount: BalanceOf<T>,
     action_id: T::ActionId) -> Result<(), DispatchError> {
 
       let who = ensure_signed(origin)?;
 
-      // check if opus exists
-      let opus_owner = <opus::Module<T>>::owner_of(opus_id).ok_or("Opus does not exist");
+      // check if creation exists
+      let creation_owner = <creation::Module<T>>::owner_of(creation_id).ok_or("Opus does not exist");
 
       // only member of curated group can propose
       let curated_group_id = Self::owner_of(tcx_id).ok_or("TCX does not exist / TCX owner does not exist")?;
@@ -180,7 +180,7 @@ decl_module! {
 
       let listing_id = <NextTcxListingId<T>>::get(tcx_id);
 
-      ensure!(!<TcxListings<T>>::contains_key((tcx_id, opus_id)), "Listing already exists");
+      ensure!(!<TcxListings<T>>::contains_key((tcx_id, creation_id)), "Listing already exists");
 
       // calculate propose quota
       let quota = match Self::calculate_quota(who.clone(), curated_group_id, amount) {
@@ -191,7 +191,7 @@ decl_module! {
       // create a new listing instance
       let new_listing = Listing {
         id: listing_id,
-        opus_id: opus_id,
+        creation_id: creation_id,
         amount: amount,
         quota: quota,
         whitelisted: false,
@@ -200,18 +200,18 @@ decl_module! {
         owner: who.clone(),
       };
 
-      <TcxListings<T>>::insert((tcx_id, opus_id), new_listing);
-	  <NextTcxListingId<T>>::mutate(tcx_id, |id| *id += <T::ListingId as One>::one());
-      <TcxListingIndexOpus<T>>::insert((tcx_id, listing_id), opus_id);
+      <TcxListings<T>>::insert((tcx_id, creation_id), new_listing);
+	    <NextTcxListingId<T>>::mutate(tcx_id, |id| *id += <T::ListingId as One>::one());
+      <TcxListingIndexOpus<T>>::insert((tcx_id, listing_id), creation_id);
 
-      Self::deposit_event(RawEvent::Proposed(who, tcx_id, opus_id, app_exp));
+      Self::deposit_event(RawEvent::Proposed(who, tcx_id, creation_id, app_exp));
 
       Ok(())
     }
 
-    // TODO: opus_id or listing_id; prevent multiple challenge
+    // TODO: creation_id or listing_id; prevent multiple challenge
     #[weight = 100_000]
-    pub fn challenge(origin, tcx_id: T::TcxId, opus_id: <T as opus::Trait>::OpusId, amount: BalanceOf<T>) -> Result<(), DispatchError> {
+    pub fn challenge(origin, tcx_id: T::TcxId, creation_id: <T as creation::Trait>::CreationId, amount: BalanceOf<T>) -> Result<(), DispatchError> {
       let who = ensure_signed(origin)?;
 
       let curated_group_id = Self::owner_of(tcx_id).ok_or("TCX does not exist / TCX owner does not exist")?;
@@ -219,9 +219,9 @@ decl_module! {
 
       ensure!(<curated_group::Module<T>>::is_member_of_curated_group(curated_group_id, who.clone()), "only member of curated_group can challenge");
 
-      ensure!(<TcxListings<T>>::contains_key((tcx_id, opus_id)), "Listing not found");
+      ensure!(<TcxListings<T>>::contains_key((tcx_id, creation_id)), "Listing not found");
 
-      let listing = Self::tcx_listings((tcx_id, opus_id));
+      let listing = Self::tcx_listings((tcx_id, creation_id));
 
       let quota = match Self::calculate_quota(who.clone(), curated_group_id, amount) {
         Ok(quota) => quota,
@@ -271,13 +271,13 @@ decl_module! {
       <Polls<T>>::insert(new_challenge_nonce, new_poll);
 
       // update listing with challenge id
-      <TcxListings<T>>::mutate((tcx_id, opus_id), |listing| {
+      <TcxListings<T>>::mutate((tcx_id, creation_id), |listing| {
         listing.challenge_id = new_challenge_nonce;
       });
 
       <ChallengeNonce<T>>::put(new_challenge_nonce);
 
-      Self::deposit_event(RawEvent::Challenged(who, new_challenge_nonce, tcx_id, opus_id, voting_exp));
+      Self::deposit_event(RawEvent::Challenged(who, new_challenge_nonce, tcx_id, creation_id, voting_exp));
 
       Ok(())
     }
@@ -354,11 +354,11 @@ decl_module! {
     }
 
     #[weight = 100_000]
-    pub fn resolve(origin, tcx_id: T::TcxId, opus_id: <T as opus::Trait>::OpusId) -> DispatchResult {
+    pub fn resolve(origin, tcx_id: T::TcxId, creation_id: <T as creation::Trait>::CreationId) -> DispatchResult {
       let who = ensure_signed(origin)?;
-      ensure!(<TcxListings<T>>::contains_key((tcx_id, opus_id)), "Listing not found");
+      ensure!(<TcxListings<T>>::contains_key((tcx_id, creation_id)), "Listing not found");
 
-      let listing = Self::tcx_listings((tcx_id, opus_id));
+      let listing = Self::tcx_listings((tcx_id, creation_id));
 
       let now = <timestamp::Module<T>>::get();
 
@@ -369,11 +369,11 @@ decl_module! {
         ensure!(listing.application_expiry < now, "Apply stage length has not passed.");
 
         // update listing status
-        <TcxListings<T>>::mutate((tcx_id, opus_id), |listing| {
+        <TcxListings<T>>::mutate((tcx_id, creation_id), |listing| {
           listing.whitelisted = true;
         });
 
-        Self::deposit_event(RawEvent::Accepted(tcx_id, opus_id));
+        Self::deposit_event(RawEvent::Accepted(tcx_id, creation_id));
         return Ok(());
       }
 
@@ -397,7 +397,7 @@ decl_module! {
       });
 
       // update listing status
-      <TcxListings<T>>::mutate((tcx_id, opus_id), |listing| {
+      <TcxListings<T>>::mutate((tcx_id, creation_id), |listing| {
         listing.whitelisted = whitelisted;
         listing.challenge_id = T::ChallengeId::from(0);
       });
@@ -416,14 +416,14 @@ decl_module! {
 
       // raise appropriate event as per whitelisting status
       if whitelisted == true {
-        Self::deposit_event(RawEvent::Accepted(tcx_id, opus_id));
+        Self::deposit_event(RawEvent::Accepted(tcx_id, creation_id));
       } else {
         // if rejected, give challenge deposit back to the challenger
         // TODO: <token::Module<T>>::unlock(challenge.owner, challenge.deposit, listing_hash)?;
 		// <T as self::Trait>::Currency::remove_lock(STAKING_ID, &who);
         let amount = <T as self::Trait>::Currency::reserved_balance(&who);
         <T as self::Trait>::Currency::unreserve(&who, amount);
-        Self::deposit_event(RawEvent::Rejected(tcx_id, opus_id));
+        Self::deposit_event(RawEvent::Rejected(tcx_id, creation_id));
       }
 
       Self::deposit_event(RawEvent::Resolved(listing.challenge_id));
@@ -478,7 +478,7 @@ decl_event!(
   pub enum Event<T>
   where
     AccountId = <T as system::Trait>::AccountId,
-    OpusId = <T as opus::Trait>::OpusId,
+    CreationId = <T as creation::Trait>::CreationId,
     TcxId = <T as Trait>::TcxId,
     TcxType = <T as Trait>::TcxType,
     ChallengeId = <T as Trait>::ChallengeId,
@@ -486,12 +486,12 @@ decl_event!(
     ContentHash = <T as curated_group::Trait>::ContentHash,
     Moment = <T as timestamp::Trait>::Moment
   {
-    Proposed(AccountId, TcxId, OpusId, Moment),
-    Challenged(AccountId, ChallengeId, TcxId, OpusId, Moment),
+    Proposed(AccountId, TcxId, CreationId, Moment),
+    Challenged(AccountId, ChallengeId, TcxId, CreationId, Moment),
     Voted(AccountId, ChallengeId, bool),
     Resolved(ChallengeId),
-    Accepted(TcxId, OpusId),
-    Rejected(TcxId, OpusId),
+    Accepted(TcxId, CreationId),
+    Rejected(TcxId, CreationId),
     Claimed(AccountId, ChallengeId),
     Created(CuratedGroupId, TcxId, TcxType, ContentHash),
   }

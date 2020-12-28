@@ -2,7 +2,7 @@
 
 /// Money matters.
 pub mod currency {
-    use module_primitives::Balance;
+    use pallet_primitives::Balance;
 
     pub const SKYS: Balance = 1_000_000_000_000_000;
     pub const DOLLARS: Balance = SKYS;
@@ -12,7 +12,7 @@ pub mod currency {
 
 /// Time.
 pub mod time {
-    use module_primitives::{BlockNumber, Moment};
+    use pallet_primitives::{BlockNumber, Moment};
 
     pub const MILLISECS_PER_BLOCK: Moment = 6000;
 
