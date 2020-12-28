@@ -1,6 +1,4 @@
-# Skylark
-
-Implementation of skylark node in Rust.
+# Skylark Parachain
 
 ## Build
 
